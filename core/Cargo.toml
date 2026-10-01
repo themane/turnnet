@@ -1,0 +1,30 @@
+[package]
+name = "turnnet-core"
+description = "TurnNet V2 session/protocol core: identities, commit model, wire protocol, sans-IO state machine."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[features]
+# Print full identifiers in Debug/Display output. Off by default so logs stay redacted.
+unredacted-debug = []
+
+[dependencies]
+prost.workspace = true
+bytes.workspace = true
+blake3.workspace = true
+rand_core.workspace = true
+thiserror.workspace = true
+
+[build-dependencies]
+prost-build.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+rand_chacha.workspace = true
+
+[lints]
+workspace = true

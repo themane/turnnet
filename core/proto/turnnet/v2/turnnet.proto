@@ -1,0 +1,444 @@
+// TurnNet V2 wire protocol.
+//
+// Normative companion: docs/protocol.md. Every frame on a peer link is a
+// 4-byte big-endian length followed by one encoded `Envelope`.
+//
+// Conventions:
+// - 128-bit identifiers (session, peer, action, message) are 16-byte `bytes`.
+// - Hashes are 32-byte BLAKE3 digests.
+// - Game action/state payloads are opaque `bytes`.
+// - Enum value 0 is always UNSPECIFIED and is rejected where a value is required.
+syntax = "proto3";
+
+package turnnet.v2;
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum CommitKind {
+  COMMIT_KIND_UNSPECIFIED = 0;
+  COMMIT_KIND_INITIAL_STATE = 1;
+  COMMIT_KIND_GAME_ACTION = 2;
+  COMMIT_KIND_MEMBER_JOIN = 3;
+  COMMIT_KIND_MEMBER_LEAVE = 4;
+  COMMIT_KIND_MEMBER_REMOVE = 5;
+  COMMIT_KIND_POLICY_METADATA_CHANGE = 6;
+}
+
+enum MemberStatus {
+  MEMBER_STATUS_UNSPECIFIED = 0;
+  MEMBER_STATUS_ACTIVE = 1;
+  MEMBER_STATUS_LEFT = 2;
+  MEMBER_STATUS_REMOVED = 3;
+}
+
+enum TransportKind {
+  TRANSPORT_KIND_UNSPECIFIED = 0;
+  TRANSPORT_KIND_SIMULATED = 1;
+  TRANSPORT_KIND_IROH = 2;
+  TRANSPORT_KIND_NEARBY = 3;
+  TRANSPORT_KIND_WIFI_AWARE = 4;
+}
+
+enum RepresentationKind {
+  REPRESENTATION_KIND_UNSPECIFIED = 0;
+  // Full authoritative state (trusted full replication).
+  REPRESENTATION_KIND_FULL = 1;
+  // Public state plus optional recipient-specific private/recovery material.
+  REPRESENTATION_KIND_PUBLIC_PRIVATE = 2;
+}
+
+enum JoinRejectReason {
+  JOIN_REJECT_REASON_UNSPECIFIED = 0;
+  JOIN_REJECT_REASON_NOT_JOINABLE = 1;
+  JOIN_REJECT_REASON_SESSION_FULL = 2;
+  JOIN_REJECT_REASON_CAPABILITY_REQUIRED = 3;
+  JOIN_REJECT_REASON_CAPABILITY_INVALID = 4;
+  JOIN_REJECT_REASON_CAPABILITY_EXPIRED = 5;
+  JOIN_REJECT_REASON_PEER_ID_CONFLICT = 6;
+  JOIN_REJECT_REASON_NOT_AUTHORITY = 7;
+  JOIN_REJECT_REASON_SESSION_ENDED = 8;
+}
+
+enum ReconnectRejectReason {
+  RECONNECT_REJECT_REASON_UNSPECIFIED = 0;
+  RECONNECT_REJECT_REASON_NOT_AUTHORITY = 1;
+  RECONNECT_REJECT_REASON_AUTH_FAILED = 2;
+  RECONNECT_REJECT_REASON_NOT_A_MEMBER = 3;
+  RECONNECT_REJECT_REASON_INCOMPATIBLE_HISTORY = 4;
+  RECONNECT_REJECT_REASON_SESSION_ENDED = 5;
+}
+
+enum ActionRejectReason {
+  ACTION_REJECT_REASON_UNSPECIFIED = 0;
+  // The game adapter rejected the action; see `game_reason_code`.
+  ACTION_REJECT_REASON_GAME_RULES = 1;
+  ACTION_REJECT_REASON_STALE_CONTEXT = 2;
+  ACTION_REJECT_REASON_NOT_AUTHORITY = 3;
+  ACTION_REJECT_REASON_NOT_A_MEMBER = 4;
+  ACTION_REJECT_REASON_PAYLOAD_TOO_LARGE = 5;
+  ACTION_REJECT_REASON_SESSION_PAUSED = 6;
+}
+
+enum ConflictKind {
+  CONFLICT_KIND_UNSPECIFIED = 0;
+  CONFLICT_KIND_SAME_TERM_DIFFERENT_HOST = 1;
+  CONFLICT_KIND_SAME_INDEX_DIFFERENT_HASH = 2;
+  CONFLICT_KIND_INCOMPATIBLE_HIGHER_TERM = 3;
+  CONFLICT_KIND_DIVERGENT_BRANCHES = 4;
+}
+
+enum LeaveReason {
+  LEAVE_REASON_UNSPECIFIED = 0;
+  LEAVE_REASON_VOLUNTARY = 1;
+  LEAVE_REASON_REMOVED = 2;
+}
+
+enum EndReason {
+  END_REASON_UNSPECIFIED = 0;
+  END_REASON_HOST_ENDED = 1;
+  END_REASON_NO_ELIGIBLE_HOST = 2;
+  END_REASON_NO_SURVIVORS = 3;
+  END_REASON_GAME_POLICY = 4;
+}
+
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED = 0;
+  ERROR_CODE_PROTOCOL_MISMATCH = 1;
+  ERROR_CODE_MALFORMED = 2;
+  ERROR_CODE_FRAME_TOO_LARGE = 3;
+  ERROR_CODE_UNKNOWN_SESSION = 4;
+  ERROR_CODE_UNAUTHENTICATED = 5;
+  ERROR_CODE_STALE_TERM = 6;
+  ERROR_CODE_INTERNAL = 7;
+}
+
+// ---------------------------------------------------------------------------
+// Shared structures
+// ---------------------------------------------------------------------------
+
+// Transport-neutral dialing information. `address_data` is opaque to the core
+// and interpreted by the transport (e.g. a serialized Iroh EndpointAddr).
+message RouteDescriptor {
+  TransportKind transport_kind = 1;
+  bytes transport_identity = 2;
+  bytes address_data = 3;
+}
+
+message PeerRoute {
+  bytes peer_id = 1;
+  uint64 route_generation = 2;
+  RouteDescriptor route = 3;
+  uint64 updated_at_ms = 4;
+}
+
+message CommitHead {
+  uint64 term = 1;
+  uint64 commit_index = 2;
+  bytes commit_hash = 3;
+}
+
+message CommitMeta {
+  bytes session_id = 1;
+  uint64 term = 2;
+  uint64 commit_index = 3;
+  bytes previous_commit_hash = 4;
+  CommitKind commit_kind = 5;
+  uint64 state_version = 6;
+  uint64 membership_epoch = 7;
+  bytes host_peer_id = 8;
+  bytes roster_hash = 9;
+  bytes logical_state_hash = 10;
+  uint32 next_join_order = 11;
+  uint32 policy_id = 12;
+  // Sorted ascending, no duplicates.
+  repeated bytes migration_eligible_peers = 13;
+  bytes migration_eligibility_digest = 14;
+  optional bytes policy_metadata_digest = 15;
+  optional bytes committed_action_id = 16;
+  optional bytes affected_peer_id = 17;
+  bytes commit_hash = 18;
+}
+
+message RosterMember {
+  bytes peer_id = 1;
+  uint32 join_order = 2;
+  MemberStatus status = 3;
+  uint64 admission_commit_index = 4;
+  bytes reconnect_verifier = 5;
+  bytes display_metadata = 6;
+}
+
+message Roster {
+  repeated RosterMember members = 1;
+}
+
+message StateRepresentation {
+  RepresentationKind kind = 1;
+  bytes public_state = 2;
+  optional bytes private_state = 3;
+  optional bytes recovery_material = 4;
+  bytes representation_hash = 5;
+}
+
+message Capabilities {
+  bool host_capable = 1;
+  uint32 policy_id = 2;
+  uint64 max_state_payload_bytes = 3;
+}
+
+// Parameters shared by HOST_PROPOSE / HOST_ACK / HOST_ANNOUNCE / HOST_TRANSFER.
+message MigrationBase {
+  uint64 new_term = 1;
+  bytes candidate_peer_id = 2;
+  uint64 base_commit_index = 3;
+  bytes base_commit_hash = 4;
+  uint64 base_state_version = 5;
+  uint64 membership_epoch = 6;
+}
+
+// ---------------------------------------------------------------------------
+// Message bodies
+// ---------------------------------------------------------------------------
+
+// First message on every new link. Does not authorize anything by itself.
+message Hello {
+  TransportKind transport_kind = 1;
+  // Must match the identity observed by the transport for this link.
+  bytes transport_identity = 2;
+  Capabilities capabilities = 3;
+  bytes nonce = 4;
+}
+
+message SessionProbe {
+  bytes nonce = 1;
+  // Optional application filter; empty matches any.
+  bytes app_id = 2;
+}
+
+// Sanitized; never contains secrets, recovery material, or private state.
+message SessionAdvertisement {
+  bytes session_id = 1;
+  bytes app_id = 2;
+  uint32 player_count = 3;
+  uint32 max_players = 4;
+  bool joinable = 5;
+  bool requires_capability = 6;
+  bytes host_display_metadata = 7;
+  bytes probe_nonce = 8;
+}
+
+message JoinRequest {
+  bytes candidate_peer_id = 1;
+  optional bytes join_capability = 2;
+  RouteDescriptor route = 3;
+  bytes display_metadata = 4;
+  Capabilities capabilities = 5;
+}
+
+message JoinAccept {
+  uint32 assigned_join_order = 1;
+  // Secret sent only to the joining peer.
+  bytes reconnect_secret = 2;
+  Roster roster = 3;
+  // Full commit chain metadata (retained for the whole session).
+  repeated CommitMeta commits = 4;
+  StateRepresentation head_state = 5;
+  bytes current_host_peer_id = 6;
+  repeated PeerRoute routes = 7;
+}
+
+message JoinReject {
+  JoinRejectReason reason = 1;
+}
+
+message ReconnectHello {
+  bytes peer_id = 1;
+  bytes reconnect_secret = 2;
+  CommitHead head = 3;
+  RouteDescriptor route = 4;
+  // True for member-to-member mesh link authentication (not a reconnect to host).
+  bool mesh = 5;
+}
+
+message ReconnectAccept {
+  Roster roster = 1;
+  // Commit metadata after the requester's head (or the full chain if needed).
+  repeated CommitMeta commits = 2;
+  StateRepresentation head_state = 3;
+  bytes current_host_peer_id = 4;
+  repeated PeerRoute routes = 5;
+  uint64 assigned_route_generation = 6;
+}
+
+message ReconnectReject {
+  ReconnectRejectReason reason = 1;
+  bytes current_host_peer_id = 2;
+  uint64 current_term = 3;
+  PeerRoute host_route = 4;
+}
+
+message PeerRoster {
+  Roster roster = 1;
+  repeated PeerRoute routes = 2;
+}
+
+message PeerRouteUpdate {
+  PeerRoute route = 1;
+  uint64 sent_at_ms = 2;
+}
+
+message Heartbeat {
+  CommitHead head = 1;
+  bool host_capable = 2;
+  bool migration_eligible = 3;
+}
+
+// action_id travels in the envelope.
+message ActionSubmit {
+  bytes action_payload = 1;
+  uint64 expected_term = 2;
+  uint64 expected_commit_index = 3;
+  uint64 expected_state_version = 4;
+}
+
+// action_id travels in the envelope.
+message ActionReject {
+  ActionRejectReason reason = 1;
+  uint32 game_reason_code = 2;
+}
+
+message StateCommit {
+  CommitMeta meta = 1;
+  // Present on membership commits.
+  optional Roster roster = 2;
+  StateRepresentation state = 3;
+}
+
+message StateAck {
+  CommitHead head = 1;
+  uint64 state_version = 2;
+  uint64 membership_epoch = 3;
+  optional bytes representation_hash = 4;
+}
+
+message StateSyncRequest {
+  uint64 from_commit_index = 1;
+  CommitHead local_head = 2;
+}
+
+message StateSyncResponse {
+  repeated CommitMeta commits = 1;
+  Roster roster = 2;
+  StateRepresentation head_state = 3;
+}
+
+message HostSuspected {
+  bytes suspected_host_peer_id = 1;
+  CommitHead head = 2;
+  bool host_capable = 3;
+  bool migration_eligible = 4;
+}
+
+message HostPropose {
+  MigrationBase base = 1;
+}
+
+message HostAck {
+  MigrationBase base = 1;
+}
+
+message HostAnnounce {
+  MigrationBase base = 1;
+}
+
+message HostTransfer {
+  MigrationBase base = 1;
+}
+
+// Redacted branch diagnostics; never carries state.
+message AuthorityConflict {
+  ConflictKind kind = 1;
+  CommitHead local_head = 2;
+  CommitHead remote_head = 3;
+  bytes local_host_peer_id = 4;
+  bytes remote_host_peer_id = 5;
+}
+
+message PeerLeft {
+  bytes peer_id = 1;
+  LeaveReason reason = 2;
+}
+
+message SessionEnd {
+  EndReason reason = 1;
+}
+
+// `detail` must never contain secrets or game payloads.
+message Error {
+  ErrorCode code = 1;
+  string detail = 2;
+}
+
+// Reserved for Phase 2 dedicated state-transfer streams.
+message StateTransferBegin {
+  bytes transfer_id = 1;
+  uint64 commit_index = 2;
+  RepresentationKind representation_kind = 3;
+  uint64 declared_length = 4;
+  bytes representation_hash = 5;
+}
+
+// ---------------------------------------------------------------------------
+// Envelope
+// ---------------------------------------------------------------------------
+
+message Envelope {
+  uint32 protocol_major = 1;
+  uint32 protocol_minor = 2;
+  // 16 bytes, or empty before a session is known (e.g. SESSION_PROBE).
+  bytes session_id = 3;
+  uint64 term = 4;
+  // 16 bytes.
+  bytes message_id = 5;
+  // 16 bytes, or empty before admission.
+  bytes sender_peer_id = 6;
+  optional uint64 commit_index = 7;
+  optional uint64 state_version = 8;
+  optional uint64 membership_epoch = 9;
+  optional bytes action_id = 10;
+
+  // Replaces the conceptual `message_type` + `payload` pair. An unset or
+  // unknown body is an unknown message type.
+  oneof body {
+    Hello hello = 20;
+    SessionProbe session_probe = 21;
+    SessionAdvertisement session_advertisement = 22;
+    JoinRequest join_request = 23;
+    JoinAccept join_accept = 24;
+    JoinReject join_reject = 25;
+    ReconnectHello reconnect_hello = 26;
+    ReconnectAccept reconnect_accept = 27;
+    ReconnectReject reconnect_reject = 28;
+    PeerRoster peer_roster = 29;
+    PeerRouteUpdate peer_route_update = 30;
+    Heartbeat heartbeat = 31;
+    ActionSubmit action_submit = 32;
+    ActionReject action_reject = 33;
+    StateCommit state_commit = 34;
+    StateAck state_ack = 35;
+    StateSyncRequest state_sync_request = 36;
+    StateSyncResponse state_sync_response = 37;
+    HostSuspected host_suspected = 38;
+    HostPropose host_propose = 39;
+    HostAck host_ack = 40;
+    HostAnnounce host_announce = 41;
+    HostTransfer host_transfer = 42;
+    AuthorityConflict authority_conflict = 43;
+    PeerLeft peer_left = 44;
+    SessionEnd session_end = 45;
+    Error error = 46;
+    StateTransferBegin state_transfer_begin = 47;
+  }
+}

@@ -45,6 +45,8 @@ Canonical companion documents:
 
 - `Turn_Based_Multiplayer_Harness_V2_Decisions.md`
 - `Turn_Based_Multiplayer_Harness_V2_AI_Context.md`
+- `Phase1_Implementation_Plan.md` (Phase 1 design; clarifications recorded in Decisions §24)
+- `protocol.md` (normative wire format and hash encodings)
 
 When architecture changes, update all affected V2 Markdown documents in the same task.
 
