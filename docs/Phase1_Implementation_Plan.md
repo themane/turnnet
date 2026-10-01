@@ -592,6 +592,7 @@ Extra tests:
 - the invariant checker never fires across the seed sweep;
 - `cargo clippy -D warnings` is clean;
 - `docs/protocol.md`, `state_commit_model.md`, `host_migration.md` and `recovery.md` are written;
+- `docs/Game_Integration_Guide.md` matches the implemented session API, with *planned* markers removed for shipped features;
 - the V2 Decisions file is updated with the C-items (DOC-003).
 
 ---
