@@ -193,7 +193,7 @@ V2 keeps the V1 session model—authoritative host, deterministic host migration
 | HM-005 | A new host claim references the exact base `commit_index` and `commit_hash` from which the new term resumes. | **Required** |
 | HM-006 | Default casual policy may activate a new host when at least two session members including the candidate are mutually reachable/acknowledging; majority quorum is not required. | **Required** |
 | HM-007 | Because the casual policy cannot prevent every network-partition split brain, V2 requires conflict detection/fencing. If incompatible authority branches are observed, stop accepting gameplay commits and surface `AuthorityConflict`/`SessionInterrupted`; do not silently merge divergent game state. | **Required** |
-| HM-008 | A higher term is not sufficient to overwrite a locally known incompatible committed branch. The proposed base commit must be reconcilable with the local commit chain. | **Required** |
+| HM-008 | A higher term is not sufficient to overwrite a locally known incompatible committed branch. The proposed base commit must be reconcilable with the local commit chain. See HM-012 for the unacknowledged orphan-tail exception. | **Required** |
 | HM-009 | A returning former host with an old term rejoins as a non-host after synchronizing to current authority. | **Required** |
 | HM-010 | Graceful host leave uses explicit authority transfer when another eligible peer exists. | **Required** |
 
@@ -324,3 +324,22 @@ These references document the external networking substrate assumed by this V2 d
 - Iroh mDNS address lookup: https://docs.rs/iroh-mdns-address-lookup/0.4.0/iroh_mdns_address_lookup/
 - Iroh relay deployment guidance: https://docs.iroh.computer/iroh-services/relays/managed
 
+## 24. Phase 1 implementation clarifications (2026-10-02)
+
+These decisions resolve points the V2 baseline left open. They were agreed before Phase 1 implementation; rationale and detail are in `Phase1_Implementation_Plan.md` §2 (plan IDs in brackets). Wire and hash encodings are normative in `protocol.md`.
+
+| ID | Decision | Status |
+|---|---|---|
+| PROTO-007 | All TurnNet hashes (`logical_state_hash`, `representation_hash`, `roster_hash`, `migration_eligibility_digest`, `reconnect_verifier`, `commit_hash`) use BLAKE3 `derive_key` with per-purpose context strings and the canonical encodings in `protocol.md`. [C-2] | **Required** |
+| PROTO-008 | The envelope's message type is the protobuf `oneof body`; an unset or unknown body is an unknown message type. [C-19] | **Required** |
+| ARCH-010 | The Rust session core is a sans-IO deterministic state machine with injected clock and randomness; async runtimes live only in runtime/transport crates. [C-3] | **Required** |
+| JOIN-001 | Admission is gated by an app-controlled `joinable` flag and `roster_size < max_players`; the core has no lobby/game-started phase. [C-5] | **Required** |
+| REL-005 | When a member stays unreachable past `reconnect_grace_period`, the core emits an event only; removal requires an explicit app-initiated `MEMBER_REMOVE` commit. [C-6] | **Required** |
+| HM-011 | If no other member is reachable for migration, the peer enters `INTERRUPTED`, keeps accepting reconnects, and ends the session (`NO_SURVIVORS`) if nobody returns within `reconnect_grace_period`. [C-7] | **Required** |
+| HM-012 | A returning former host may discard commits that it authored and that no other peer acknowledged, rolling back to the new term's base, and must emit a diagnostic. Commits acknowledged or held by any other peer are never discarded; divergence there is fenced per HM-007/HM-008. [C-13] | **Required** |
+| ACT-005 | Mismatched `expected_state_version` in `ACTION_SUBMIT` is handled by a configurable policy whose default is reject (`STALE_CONTEXT`). [C-8] | **Required** |
+| ACT-006 | The committed `action_id` set is derived from the retained commit chain (each `GAME_ACTION` commit binds its `committed_action_id`). [C-14] | **Required** |
+| STATE-009 | Every peer retains all commit metadata for the session and the full state representation for the head commit only. [C-10] | **Required** |
+| PRIV-008 | Commit metadata carries the sorted migration-eligible peer list; `migration_eligibility_digest` is its hash. [C-15] | **Required** |
+| REC-006 | The admitting host issues each peer a random 256-bit reconnect secret; the committed roster stores only its `reconnect_verifier`, so any later host can authenticate reconnects. [C-11] | **Required** |
+| INV-007 | Join capabilities are host-local and are not replicated; invites issued by a previous host are invalid after migration. [C-16] | **Required** |

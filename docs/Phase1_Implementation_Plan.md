@@ -1,7 +1,7 @@
 ---
 document: turnnet_v2_phase1_implementation_plan
 version: 1.0
-status: draft_for_approval
+status: approved
 date: 2026-10-02
 working_name: TurnNet
 derived_from:
@@ -78,7 +78,7 @@ Derived design choices (no question needed, listed so reviewers can see them):
 | C-18 | Non-host reconnect target | A non-host that receives `RECONNECT_HELLO` answers `RECONNECT_REJECT{NOT_AUTHORITY}` with the current host's `peer_id`, term and route. The reconnecting peer then dials the host. |
 | C-19 | Envelope body | The protobuf `oneof body` replaces the conceptual `message_type` + `payload` pair. An unset or unknown `oneof` is treated as an unknown message type. |
 
-**Doc sync (DOC-003):** on approval, C-6, C-7, C-11, C-13, C-14 and C-16 will be added to the V2 Decisions file as `HM-011`, `REC-006`, and so on, in the first implementation change.
+**Doc sync (DOC-003):** these clarifications are recorded in V2 Decisions §24 (PROTO-007/008, ARCH-010, JOIN-001, REL-005, HM-011/012, ACT-005/006, STATE-009, PRIV-008, REC-006, INV-007).
 
 ---
 
@@ -302,7 +302,8 @@ Transport callbacks only produce `Input`s. The game adapter is invoked solely fr
 | `max_join_retries` | 3 |
 | `stale_action_policy` | `Reject` (C-8) |
 | `join_policy` | `Open` \| `RequireCapability` |
-| `max_control_frame` | 64 KiB (library hard limit, not app-raisable) |
+| `max_frame_bytes` | 1 MiB + 64 KiB default; hard cap 16 MiB + 64 KiB (state travels inline in Phase 1) |
+| `max_control_message_bytes` | 64 KiB (library hard limit, not app-raisable); applies to messages that do not carry state |
 | `max_state_payload` | 1 MiB default, hard max 16 MiB |
 | `max_action_payload` | 64 KiB default |
 | `max_pending_outbound_bytes` | 4 MiB per link |
@@ -315,7 +316,7 @@ Transport callbacks only produce `Input`s. The game adapter is invoked solely fr
 
 ### 5.1 Framing
 
-`u32` big-endian length followed by the encoded `Envelope`. Validation checks the length against `max_control_frame` **before** allocating. A zero or oversized length closes the link with `ERROR{FRAME_TOO_LARGE|MALFORMED}`.
+`u32` big-endian length followed by the encoded `Envelope`. Validation checks the length against `max_frame_bytes` **before** allocating. After decoding, messages that do not carry state are also checked against `max_control_message_bytes`. A zero or oversized length closes the link with `ERROR{FRAME_TOO_LARGE|MALFORMED}`.
 
 ### 5.2 Envelope
 
@@ -386,18 +387,18 @@ Every rejection emits a categorized diagnostic. None of them mutates state.
 
 ## 6. Hash and canonical encoding (`hash/`)
 
-All hashes use `blake3::Hasher::new_derive_key(CTX)`. Integers are fixed-width big-endian. An `Option<T>` is encoded as `0x00`, or `0x01` followed by T. Variable-length bytes are encoded as a `u32` length followed by the bytes.
+All hashes use `blake3::Hasher::new_derive_key(CTX)`. Integers are fixed-width big-endian. An `Option<T>` is encoded as `0x00`, or `0x01` followed by T. Variable-length bytes are encoded as a `u64` length followed by the bytes, and lists as a `u32` count. `docs/protocol.md` §4 is the normative version of this table.
 
 | Hash | Context string | Input |
 |---|---|---|
 | `logical_state_hash` | `"turnnet v2 logical_state"` | `len‖state_bytes` |
 | `representation_hash` | `"turnnet v2 representation"` | `kind:u8 ‖ len‖public ‖ opt(len‖private) ‖ opt(len‖recovery)` |
-| `roster_hash` | `"turnnet v2 roster"` | `count:u8`, then per member sorted by `join_order`: `peer_id ‖ join_order:u32 ‖ status:u8 ‖ admission_ci:u64 ‖ reconnect_verifier ‖ len‖display_metadata` |
-| `migration_eligibility_digest` | `"turnnet v2 eligibility"` | `policy_id:u32 ‖ count:u8 ‖ sorted peer_ids` |
+| `roster_hash` | `"turnnet v2 roster"` | `count:u32`, then per member sorted by `join_order`: `peer_id ‖ join_order:u32 ‖ status:u8 ‖ admission_ci:u64 ‖ reconnect_verifier ‖ len‖display_metadata` |
+| `migration_eligibility_digest` | `"turnnet v2 eligibility"` | `policy_id:u32 ‖ count:u32 ‖ sorted peer_ids` |
 | `reconnect_verifier` | `"turnnet v2 reconnect"` | `session_id ‖ peer_id ‖ secret` |
 | `commit_hash` | `"turnnet v2 commit"` | `session_id ‖ term ‖ commit_index ‖ previous_commit_hash ‖ kind:u8 ‖ state_version ‖ membership_epoch ‖ host_peer_id ‖ roster_hash ‖ logical_state_hash ‖ next_join_order:u32 ‖ migration_eligibility_digest ‖ opt(policy_metadata_digest) ‖ opt(committed_action_id) ‖ opt(affected_peer_id)` |
 
-Golden-vector tests will pin these encodings. `docs/protocol.md` will restate them as normative.
+Golden-vector tests pin these encodings, and layout tests rebuild each byte layout by hand to check the encoder independently. `CommitMeta` also carries `policy_id` so peers can recompute the eligibility digest.
 
 ---
 
@@ -599,7 +600,7 @@ Extra tests:
 
 | M | Content | Exit check |
 |---|---|---|
-| M1 | Workspace, ids, hash encoders + golden vectors, proto + codegen, frame codec | codec/hash unit tests |
+| M1 ✅ | Workspace, ids, hash encoders + golden vectors, proto + codegen, frame codec | codec/hash unit tests |
 | M2 | CommitChain, roster, `reconcile()` (pure, unit-tested exhaustively) | chain/reconcile tests |
 | M3 | SessionCore skeleton, sim crate, create/discover/join, mesh, heartbeats | tests 1–2, every count from 2 to 8 |
 | M4 | Actions, dedupe, commits, ACK, sync, leave/remove, joinable, invites | tests 4–6, 9–11, 31 |
