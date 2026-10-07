@@ -1,6 +1,16 @@
 //! Authoritative commit model (Implementation Spec §21).
-//!
-//! M1 defines the commit kinds; `CommitMeta` and `CommitChain` arrive in M2.
+
+mod chain;
+mod meta;
+mod reconcile;
+#[cfg(test)]
+pub(crate) mod testkit;
+#[cfg(test)]
+mod tests;
+
+pub use chain::{ChainError, CommitChain, SyncError};
+pub use meta::CommitMeta;
+pub use reconcile::{Claim, ConflictReason, Reconciliation, reconcile};
 
 /// Kind of authoritative commit. Discriminants are the wire and hash codes.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]

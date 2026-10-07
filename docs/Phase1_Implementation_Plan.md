@@ -602,7 +602,7 @@ Extra tests:
 | M | Content | Exit check |
 |---|---|---|
 | M1 ✅ | Workspace, ids, hash encoders + golden vectors, proto + codegen, frame codec | codec/hash unit tests |
-| M2 | CommitChain, roster, `reconcile()` (pure, unit-tested exhaustively) | chain/reconcile tests |
+| M2 ✅ | CommitChain, roster, `reconcile()` (pure, unit-tested exhaustively) | chain/reconcile tests |
 | M3 | SessionCore skeleton, sim crate, create/discover/join, mesh, heartbeats | tests 1–2, every count from 2 to 8 |
 | M4 | Actions, dedupe, commits, ACK, sync, leave/remove, joinable, invites | tests 4–6, 9–11, 31 |
 | M5 | Visibility policy, eligibility, hidden-state fixture | tests 28–30 |

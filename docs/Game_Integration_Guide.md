@@ -18,6 +18,7 @@ How to build a 2–8 player turn-based multiplayer game on TurnNet.
 | Capability | Status |
 |---|---|
 | Identity types, hashes, wire protocol, framing | ✅ M1 |
+| Commit chain, roster, `reconcile()` | ✅ M2 |
 | Session core (create/join/actions/commits) | Planned: M2–M4 |
 | Hidden-information policies | Planned: M5 |
 | Host migration, conflict fencing | Planned: M6 |

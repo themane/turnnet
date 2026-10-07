@@ -1,6 +1,8 @@
 //! Committed membership (Implementation Spec §20).
-//!
-//! M1 defines member status; the roster arrives in M2.
+
+mod roster;
+
+pub use roster::{MAX_DISPLAY_METADATA, PeerMembership, Roster, RosterError};
 
 /// Committed roster status. Discriminants are the wire and hash codes.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]

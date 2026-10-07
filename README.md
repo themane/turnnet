@@ -21,7 +21,7 @@ recovery — with no backend server.
 design your game state and rules, the session lifecycle, events, hidden
 information, recovery, invites, configuration, testing, and a checklist.
 
-> The session API is still being built (Phase 1, milestone M1 done). The guide
+> The session API is still being built (Phase 1, milestones M1 and M2 done). The guide
 > marks planned APIs explicitly; its game-design guidance applies today.
 
 ## Building
