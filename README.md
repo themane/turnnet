@@ -40,6 +40,7 @@ cargo test --workspace
 - [Phase 1 Implementation Plan](docs/Phase1_Implementation_Plan.md)
 - [Wire protocol and hash encodings](docs/protocol.md)
 - [Game Integration Guide](docs/Game_Integration_Guide.md)
+- [Session API reference](docs/Session_API.md) (draft; planned API)
 
 ## License
 
