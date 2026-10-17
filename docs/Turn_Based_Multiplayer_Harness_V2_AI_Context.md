@@ -37,7 +37,9 @@ Canonical V2 documentation:
 
 - `Turn_Based_Multiplayer_Harness_V2_Implementation_Spec.md` - implementation-driving specification.
 - `Turn_Based_Multiplayer_Harness_V2_AI_Context.md` - compact context for coding sessions.
-- `Turn_Based_Multiplayer_Harness_V2_Decisions.md` - canonical architectural decisions.
+- `Turn_Based_Multiplayer_Harness_V2_Decisions.md` - canonical architectural decisions (§24 records Phase 1 clarifications).
+- `Phase1_Implementation_Plan.md` - Phase 1 design and agreed clarifications.
+- `protocol.md` - normative wire format and canonical hash encodings.
 
 If documents conflict, the Decisions file wins on architecture. The Implementation Spec wins on implementation detail when it does not contradict Decisions.
 
